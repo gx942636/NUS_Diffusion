@@ -1,2 +1,4 @@
 sr_NUSNMR_250930_081820/checkpoint/I720000_E72_gen.pth filter=lfs diff=lfs merge=lfs -text
 sr_NUSNMR_250930_081820/checkpoint/I720000_E72_opt.pth filter=lfs diff=lfs merge=lfs -text
+sr_NUSNMR_251212_073902/checkpoint/I710000_E71_gen.pth filter=lfs diff=lfs merge=lfs -text
+sr_NUSNMR_251212_073902/checkpoint/I710000_E71_opt.pth filter=lfs diff=lfs merge=lfs -text
