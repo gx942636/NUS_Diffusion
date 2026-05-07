@@ -8,7 +8,6 @@ class BaseModel():
         self.opt = opt
         self.device = torch.device(
             'cuda:' + str(opt['gpu_ids'][0])if opt['gpu_ids'] is not None else 'cpu')
-        # self.device = torch.device('cuda:4')
         self.begin_step = 0
         self.begin_epoch = 0
 

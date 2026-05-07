@@ -20,8 +20,6 @@ class NUSNMRDataset(Dataset):
 
     def __getitem__(self, idx):
         NUS_FID, NOISE_input, GT_label, factor_matrix = self.__gen_signal__(idx)
-        # power_of_10 = int(np.log10(np.max([np.real(NOISE_input), np.imag(NOISE_input)]))) + 1 if np.max([np.real(NOISE_input), np.imag(NOISE_input)]) != 0 else 1
-        # max_amp = 10 ** power_of_10
         max_amp = np.max(np.abs(NOISE_input))
 
         # NUS_FID = torch.complex(torch.from_numpy(NUS_FID.real).float(), torch.from_numpy(NUS_FID.imag).float())
@@ -44,8 +42,8 @@ class NUSNMRDataset(Dataset):
         dim = 2
 
         N = 256
-        N1 = 256  # 第一个维度大小
-        N2 = 256  # 第二个维度大小
+        N1 = 256  # first dimension
+        N2 = 256  # second dimension
         max_J = 220
         # max_J = random.randint(350, 550)
 
@@ -69,7 +67,6 @@ class NUSNMRDataset(Dataset):
             1j * 2 * np.pi * w[..., None] * t1)
         x2 = A[..., None] * np.exp(1j * ph[..., None]) * np.exp(-t2 / sgm[..., None]) * np.exp(
             1j * 2 * np.pi * w[..., None] * t2)
-        # xn_unit = np.matmul(x1[0][:, :, np.newaxis], x2[0][:, np.newaxis])
         xn_unit = np.matmul(x1[0][:, :, np.newaxis], x2[1][:, np.newaxis])
         clean_xn = np.sum(xn_unit, axis=0)
 
@@ -87,22 +84,11 @@ class NUSNMRDataset(Dataset):
             noise_out = noise_real + 1j * noise_imag
             return noise_out
 
-        # xx_noise = xx + generate_noise(np.random.uniform(40, 100), np.max(xx), N1, N2)
-
         # Control the range of peak, can be adjusted
         threshold = 3
         # Create binary masks for the two dimensions
         temp1 = np.zeros((dim, max_J, N1))
         temp2 = np.zeros((dim, max_J, N2))
-
-        # for i in range(dim):
-        #     for j in range(max_J):
-        #         freq_indices1 = (np.abs(2 * np.pi * w[i, j] - np.linspace(0, 1, N1) * 2 * np.pi)
-        #                          <= threshold / sgm[i, j])
-        #         temp1[i, j, freq_indices1] = 1
-        #         # For temp2 (Dimension 2)
-        #         freq_indices2 = np.abs(2 * np.pi * w[i, j] - np.linspace(0, 1, N2) * 2 * np.pi) <= threshold / sgm[i, j]
-        #         temp2[i, j, freq_indices2] = 1
 
         # 减少时间复杂度
         for i in range(dim):
@@ -122,13 +108,8 @@ class NUSNMRDataset(Dataset):
         factor_matrix[factor_matrix > 1] = 1
 
 
-        # # 不同采样率掩膜
-        # random_integer = random.randint(10000, 20000)  # 生成1000到2000之间的随机整数
-        # result = random_integer / 100000  # 除以100000
-        # result_formatted = '{:.5f}'.format(result)  # 格式化为五位小数
-
-        # 采样率固定
-        result_formatted = random.randint(1, 10000)  # 生成1到10000之间的随机整数
+        # Fixed sampling rate
+        result_formatted = random.randint(1, 10000)
         Mask = scio.loadmat('./data/0.15_stack_mask-256-256/Mask_' + str(result_formatted) + '.mat')['Mask']
 
         idx_ones = np.where(Mask == 1)

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import model as Model
+import model2 as Model
 import argparse
 import core.logger as Logger
 import core.metrics as Metrics
@@ -29,34 +29,34 @@ torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 
 def pad_data(data, block_size):
-    # 获取数据的形状
+
     height, width = data.shape
 
-    # 计算需要填充的行和列数
+
     pad_height = (block_size - height % block_size) % block_size
     pad_width = (block_size - width % block_size) % block_size
 
-    # 在数据的底部和右侧填充0
+
     padded_data = np.pad(data, ((0, pad_height), (0, pad_width)), mode='constant', constant_values=0)
 
     return padded_data, pad_height, pad_width
 
 
 def block_data(data, block_size):
-    # 对数据进行填充
+
     padded_data, pad_height, pad_width = pad_data(data, block_size)
 
-    # 获取填充后的数据的形状
+
     height, width = padded_data.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_size
     num_blocks_horizontal = width // block_size
 
-    # 创建一个空数组来存储分块后的数据
+
     blocks = np.empty((num_blocks_vertical * num_blocks_horizontal, block_size, block_size), dtype=padded_data.dtype)
 
-    # 分块
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):
@@ -68,20 +68,20 @@ def block_data(data, block_size):
 
 
 def reconstruct_data(blocks, pad_shape, pad_height, pad_width):
-    # 获取填充后数据的形状
+
     height, width = pad_shape
 
-    # 获取块的形状和数量
+
     num_blocks, block_height, block_width = blocks.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_height
     num_blocks_horizontal = width // block_width
 
-    # 创建一个空数组来存储重构后的数据
+
     reconstructed_data = np.empty((height, width), dtype=blocks.dtype)
 
-    # 重构数据
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):
@@ -89,7 +89,7 @@ def reconstruct_data(blocks, pad_shape, pad_height, pad_width):
             reconstructed_data[i * block_height:(i + 1) * block_height, j * block_width:(j + 1) * block_width] = block
             idx += 1
 
-    # 删除填充的部分
+
     final_data = reconstructed_data[:height if not pad_height else -pad_height, :width if not pad_width else -pad_width]
 
     return final_data
@@ -99,31 +99,24 @@ data_path = f"{opt['datasets']['test']['real_data_path']}.mat"
 sample_rate = opt['datasets']['test']['sample_rate']
 ori_spec = scio.loadmat(data_path)['spec']
 print(ori_spec.shape)
-# ori_spec = np.abs(ori_spec)
-# ori_spec = np.fft.fft2(ori_spec)
 N1 = ori_spec.shape[0]
 N2 = ori_spec.shape[1]
 
 threshold = 0.01
 mask = np.abs(ori_spec) < np.max(np.abs(ori_spec), axis=1, keepdims=True)[0] * threshold
-# 使用掩码将原始张量中对应位置的值置为零
+
 ori_spec[mask] = 0
 
 phase_input, pad_shape, pad_height, pad_width = block_data(ori_spec, 256)
 xx = np.fft.ifft(ori_spec, axis=0)
 
-# random_integer = random.randint(10000, 20000)  # 生成1000到2000之间的随机整数
-# result = 15000 / 100000  # 除以100000
-# result_formatted = '{:.5f}'.format(result)  # 格式化为五位小数
 result_formatted = random.randint(1, 1000)  # 生成1到10000之间的随机整数
 # result_formatted = 844
 print(result_formatted)
 Mask = scio.loadmat(f"./data/{sample_rate}_stack_mask-{N1}-{N2}/Mask_{result_formatted}.mat")['Mask']
-# Mask = scio.loadmat(f"./data/0.10_stack_mask-{N1}-{N2}/Mask_{result_formatted}.mat")['Mask']
 U = Mask
 
 NUS_FID = np.multiply(U, xx)
-# NUS_FID = xx
 NOISE_input = np.fft.fft(NUS_FID, axis=0)
 NUS_FID, _, _, _ = block_data(NUS_FID, 256)
 NOISE_input, _, _, _ = block_data(NOISE_input, 256)
@@ -134,7 +127,6 @@ block_num = phase_input.shape[0]
 print(block_num)
 
 max_amp = np.max(np.abs(NOISE_input))
-# NUS_FID = torch.complex(torch.from_numpy(NUS_FID.real).float(), torch.from_numpy(NUS_FID.imag).float())
 NUS_FID = torch.complex(torch.from_numpy(NUS_FID.real).float(), torch.from_numpy(NUS_FID.imag).float()) / (
             max_amp * 3.5)
 NOISE_input = torch.complex(torch.from_numpy(NOISE_input.real).float(), torch.from_numpy(NOISE_input.imag).float()) / (

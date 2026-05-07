@@ -138,11 +138,6 @@ class DenseNet(nn.Module):
                                                                   torch.nonzero(y, as_tuple=True)]) / (
                                                                      1 + 1e3)
                 x = torch.fft.fft2(x, dim=(-2, -1))
-                # threshold = 0.1
-                # mask = x.abs() < (torch.max(x.abs(), dim=-2)[0]).unsqueeze(0) * threshold
-                # x[mask] = 0
-                # mask1 = x.abs() < (torch.max(x.abs(), dim=-1)[0]).unsqueeze(1) * threshold
-                # x[mask1] = 0
                 x, _, _, _ = block_data_ddpm(x, 64)
                 x = x.unsqueeze(1)
             else:
@@ -156,8 +151,6 @@ class DenseNet(nn.Module):
 
 
             x = torch.concat((x.real, x.imag), dim=1)
-            # Z.append(x)
-        # Z = torch.cat(Z, dim=1)
         return x
 
 def exists(x):
@@ -170,7 +163,6 @@ def default(val, d):
     return d() if isfunction(d) else d
 
 
-# PositionalEncoding Source： https://github.com/lmnt-com/wavegrad/blob/master/src/wavegrad/model.py
 class SpecialConcat(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -185,7 +177,7 @@ class SpecialConcat(nn.Module):
         return out
 
 
-class PositionalEncoding(nn.Module):  # 实现了位置编码
+class PositionalEncoding(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
@@ -193,44 +185,14 @@ class PositionalEncoding(nn.Module):  # 实现了位置编码
     def forward(self, noise_level):
         count = self.dim // 2
         step = torch.arange(count, dtype=noise_level.dtype,
-                            device=noise_level.device) / count  # 用作位置编码的步长
+                            device=noise_level.device) / count
         encoding = noise_level.unsqueeze(
             1) * torch.exp(-math.log(1e4) * step.unsqueeze(0))
         encoding = torch.cat(
             [torch.sin(encoding), torch.cos(encoding)], dim=-1)
         return encoding
 
-# class Shallow_network(nn.Module):
-#     def __init__(self, in_channels, out_channels):
-#         super().__init__()
-#         self.model = nn.Sequential(
-#             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-#             nn.ReLU(inplace=True),
-#             nn.AvgPool2d(2),
-#
-#             nn.Conv2d(out_channels, out_channels * 2, kernel_size=3, padding=1),
-#             nn.ReLU(inplace=True),
-#             nn.AvgPool2d(2),
-#
-#             nn.Conv2d(out_channels * 2, out_channels * 4, kernel_size=3, padding=1),
-#             nn.ReLU(inplace=True),
-#             nn.AvgPool2d(2),
-#
-#             nn.Conv2d(out_channels * 4, out_channels * 2, kernel_size=1, padding=0)
-#         )
-#         self.noise_func = nn.Linear(in_channels, out_channels)
-#
-#     def forward(self, x, x_adjust, noise_embed):
-#         batch = x_adjust.shape[0]
-#         out = self.model(x_adjust)
-#         out = F.adaptive_avg_pool2d(out, (1, 1))
-#         out1 = out[:, :out.shape[1]//2]
-#         out2 = out[:, out.shape[1]//2:]
-#         noise_embed = self.noise_func(noise_embed).view(batch, -1, 1, 1)
-#         x = x + out1 * noise_embed + out2
-#         return x
-
-class FeatureWiseAffine(nn.Module):  # 实现了特征级别的仿射变换
+class FeatureWiseAffine(nn.Module):
     def __init__(self, in_channels, out_channels, use_affine_level=False):
         super(FeatureWiseAffine, self).__init__()
         self.use_affine_level = use_affine_level
@@ -309,13 +271,13 @@ class ResnetBlock(nn.Module):
         return h + self.res_conv(x)
 
 
-class SelfAttention(nn.Module):  # 自注意力机制的前向传播
+class SelfAttention(nn.Module):
     def __init__(self, in_channel, n_head=1, norm_groups=32):
         super().__init__()
 
-        self.n_head = n_head  # 注意力头的数量，默认为 1
+        self.n_head = n_head
 
-        self.norm = nn.GroupNorm(norm_groups, in_channel)  # 组归一化的组数，默认为 32
+        self.norm = nn.GroupNorm(norm_groups, in_channel)
         self.qkv = nn.Conv2d(in_channel, in_channel * 3, 1, bias=False)
         self.out = nn.Conv2d(in_channel, in_channel, 1)
 
@@ -340,33 +302,33 @@ class SelfAttention(nn.Module):  # 自注意力机制的前向传播
 
         return out + input
 
-class SelfAttention2varible(nn.Module):  # 双输入的自注意力机制
+class SelfAttention2varible(nn.Module):
     def __init__(self, in_channel, n_head=1, norm_groups=32):
         super().__init__()
 
-        self.n_head = n_head  # 注意力头的数量，默认为 1
+        self.n_head = n_head
 
-        self.norm_q = nn.GroupNorm(norm_groups, in_channel)  # 对第一个输入进行归一化
-        self.norm_kv = nn.GroupNorm(norm_groups, in_channel)  # 对第二个输入进行归一化
-        self.q = nn.Conv2d(in_channel, in_channel, 1, bias=False)  # 用于生成 query
-        self.kv = nn.Conv2d(in_channel, in_channel * 2, 1, bias=False)  # 用于生成 key 和 value
-        self.out = nn.Conv2d(in_channel, in_channel, 1)  # 输出通道
+        self.norm_q = nn.GroupNorm(norm_groups, in_channel)
+        self.norm_kv = nn.GroupNorm(norm_groups, in_channel)
+        self.q = nn.Conv2d(in_channel, in_channel, 1, bias=False)
+        self.kv = nn.Conv2d(in_channel, in_channel * 2, 1, bias=False)
+        self.out = nn.Conv2d(in_channel, in_channel, 1)
 
     def forward(self, input_q, input_kv):
         batch, channel, height, width = input_q.shape
         n_head = self.n_head
         head_dim = channel // n_head
 
-        # 归一化和生成 query
-        norm_q = self.norm_q(input_q)
-        query = self.q(norm_q).view(batch, n_head, head_dim, height, width)  # 生成 query
 
-        # 归一化和生成 key, value
+        norm_q = self.norm_q(input_q)
+        query = self.q(norm_q).view(batch, n_head, head_dim, height, width)
+
+
         norm_kv = self.norm_kv(input_kv)
         kv = self.kv(norm_kv).view(batch, n_head, head_dim * 2, height, width)
-        key, value = kv.chunk(2, dim=2)  # 将 kv 分成 key 和 value
+        key, value = kv.chunk(2, dim=2)
 
-        # 计算注意力
+
         attn = torch.einsum(
             "bnchw, bncyx -> bnhwyx", query, key
         ).contiguous() / math.sqrt(channel)
@@ -374,45 +336,45 @@ class SelfAttention2varible(nn.Module):  # 双输入的自注意力机制
         attn = torch.softmax(attn, -1)
         attn = attn.view(batch, n_head, height, width, height, width)
 
-        # 计算加权输出
+
         out = torch.einsum("bnhwyx, bncyx -> bnchw", attn, value).contiguous()
         out = self.out(out.view(batch, channel, height, width))
 
-        # 残差连接返回
+
         return out + input_q
 
-class SelfAttention3varible(nn.Module):  # 三输入的自注意力机制
+class SelfAttention3varible(nn.Module):
     def __init__(self, in_channel, n_head=1, norm_groups=32):
         super().__init__()
 
-        self.n_head = n_head  # 注意力头的数量，默认为 1
+        self.n_head = n_head
 
-        self.norm_q = nn.GroupNorm(norm_groups, in_channel)  # 对第一个输入进行归一化
-        self.norm_k = nn.GroupNorm(norm_groups, in_channel)  # 对第二个输入（k）进行归一化
-        self.norm_v = nn.GroupNorm(norm_groups, in_channel)  # 对第三个输入（v）进行归一化
-        self.q = nn.Conv2d(in_channel, in_channel, 1, bias=False)  # 用于生成 query
-        self.k = nn.Conv2d(in_channel, in_channel, 1, bias=False)  # 用于生成 key
-        self.v = nn.Conv2d(in_channel, in_channel, 1, bias=False)  # 用于生成 value
-        self.out = nn.Conv2d(in_channel, in_channel, 1)  # 输出通道
+        self.norm_q = nn.GroupNorm(norm_groups, in_channel)
+        self.norm_k = nn.GroupNorm(norm_groups, in_channel)
+        self.norm_v = nn.GroupNorm(norm_groups, in_channel)
+        self.q = nn.Conv2d(in_channel, in_channel, 1, bias=False)
+        self.k = nn.Conv2d(in_channel, in_channel, 1, bias=False)
+        self.v = nn.Conv2d(in_channel, in_channel, 1, bias=False)
+        self.out = nn.Conv2d(in_channel, in_channel, 1)
 
     def forward(self, input_q, input_k, input_v):
         batch, channel, height, width = input_q.shape
         n_head = self.n_head
         head_dim = channel // n_head
 
-        # 归一化和生成 query
+
         norm_q = self.norm_q(input_q)
         query = self.q(norm_q).view(batch, n_head, head_dim, height, width)  # 生成 query
 
-        # 归一化和生成 key
+
         norm_k = self.norm_k(input_k)
         key = self.k(norm_k).view(batch, n_head, head_dim, height, width)
 
-        # 归一化和生成 value
+
         norm_v = self.norm_v(input_v)
         value = self.v(norm_v).view(batch, n_head, head_dim, height, width)
 
-        # 计算注意力
+
         attn = torch.einsum(
             "bnchw, bncyx -> bnhwyx", query, key
         ).contiguous() / math.sqrt(channel)
@@ -420,15 +382,15 @@ class SelfAttention3varible(nn.Module):  # 三输入的自注意力机制
         attn = torch.softmax(attn, -1)
         attn = attn.view(batch, n_head, height, width, height, width)
 
-        # 计算加权输出
+
         out = torch.einsum("bnhwyx, bncyx -> bnchw", attn, value).contiguous()
         out = self.out(out.view(batch, channel, height, width))
 
-        # 残差连接返回
+
         return out + input_q
 
 
-class ResnetBlocWithAttn(nn.Module):  # 具有残差连接和注意力机制的块
+class ResnetBlocWithAttn(nn.Module):
     def __init__(self, dim, dim_out, *, noise_level_emb_dim=None, norm_groups=32, dropout=0, with_attn=False):
         super().__init__()
         self.with_attn = with_attn
@@ -443,7 +405,7 @@ class ResnetBlocWithAttn(nn.Module):  # 具有残差连接和注意力机制的�
             x = self.attn(x)
         return x
 
-class ResnetBlocWith21Attn(nn.Module):  # 具有残差连接和注意力机制的块
+class ResnetBlocWith21Attn(nn.Module):
     def __init__(self, dim, dim_out, *, noise_level_emb_dim=None, norm_groups=32, dropout=0, with_attn=False):
         super().__init__()
         self.with_attn = with_attn
@@ -458,7 +420,7 @@ class ResnetBlocWith21Attn(nn.Module):  # 具有残差连接和注意力机制�
             x = self.attn(x, x_sr)
         return x
 
-class ResnetBlocWith22Attn(nn.Module):  # 具有残差连接和注意力机制的块
+class ResnetBlocWith22Attn(nn.Module):
     def __init__(self, dim, dim_out, *, noise_level_emb_dim=None, norm_groups=32, dropout=0, with_attn=False):
         super().__init__()
         self.with_attn = with_attn
@@ -519,16 +481,16 @@ class CCALayer(nn.Module):
         return x * y
 
 def stdv_channels(F):
-    assert (F.dim() == 4)  # 确保 F 是四维数据 (B, C, H, W)
-    F_mean = mean_channels(F)  # 获取每个通道的均值
-    eps = 1e-7  # 防止除零的非常小的常数
-    F_variance = ((F - F_mean + eps).pow(2)).sum(dim=(2, 3), keepdim=True) / (F.size(2) * F.size(3))  # 沿 H 和 W 维度求方差
-    return F_variance.pow(0.5)  # 返回标准差
+    assert (F.dim() == 4)
+    F_mean = mean_channels(F)
+    eps = 1e-7
+    F_variance = ((F - F_mean + eps).pow(2)).sum(dim=(2, 3), keepdim=True) / (F.size(2) * F.size(3))
+    return F_variance.pow(0.5)
 
 def mean_channels(F):
-    assert (F.dim() == 4)  # 确保 F 是四维数据 (B, C, H, W)
-    spatial_sum = F.sum(dim=(2, 3), keepdim=True)  # 沿着 H 和 W 维度求和
-    return spatial_sum / (F.size(2) * F.size(3))  # 除以 H * W，得到每个通道的均值
+    assert (F.dim() == 4)
+    spatial_sum = F.sum(dim=(2, 3), keepdim=True)
+    return spatial_sum / (F.size(2) * F.size(3))
 
 class UNet(nn.Module):
     def __init__(
@@ -548,10 +510,10 @@ class UNet(nn.Module):
         super().__init__()
         self.data_path = data_path
 
-        if with_noise_level_emb:  # 根据输入参数确定是否使用噪声级别嵌入
+        if with_noise_level_emb:
             noise_level_channel = inner_channel
             self.noise_level_mlp = nn.Sequential(
-                PositionalEncoding(inner_channel), #进行位置编码
+                PositionalEncoding(inner_channel),
                 nn.Linear(inner_channel, inner_channel * 4),
                 Swish(),
                 nn.Linear(inner_channel * 4, inner_channel)
@@ -583,9 +545,6 @@ class UNet(nn.Module):
         self.downs = nn.ModuleList(downs)
 
         self.mid = nn.ModuleList([
-            # ResnetBlocWithAttn(pre_channel, pre_channel, noise_level_emb_dim=noise_level_channel,
-            #                    norm_groups=norm_groups,
-            #                    dropout=dropout, with_attn=True),
             ResnetBlocWith21Attn(pre_channel, pre_channel, noise_level_emb_dim=noise_level_channel,
                                  norm_groups=norm_groups,
                                  dropout=dropout, with_attn=True),
@@ -643,8 +602,6 @@ class UNet(nn.Module):
         # x_sr = self.adapt_conv(x_sr)
         x_sr = self.dpm(x_sr)
 
-        # x = torch.cat([x, x_srdc], dim=1)
-
         outputs = deque()
         first_layer = True
         for layer in self.downs:
@@ -700,14 +657,14 @@ class UNet(nn.Module):
         return self.final_conv(x), x_den
 
 def pad_data_ddpm(data, block_size):
-    # 获取数据的形状
+
     height, width = data.shape
 
-    # 计算需要填充的行和列数
+
     pad_height = (block_size - height % block_size) % block_size
     pad_width = (block_size - width % block_size) % block_size
 
-    # 在数据的底部和右侧填充0
+
     if isinstance(data, torch.Tensor):
         padded_data = F.pad(data, (0, pad_width, 0, pad_height), mode='constant', value=0)
     elif isinstance(data, np.ndarray):
@@ -716,17 +673,17 @@ def pad_data_ddpm(data, block_size):
     return padded_data, pad_height, pad_width
 
 def block_data_ddpm(data, block_size):
-    # 对数据进行填充
+
     padded_data, pad_height, pad_width = pad_data_ddpm(data, block_size)
 
-    # 获取填充后的数据的形状
+
     height, width = padded_data.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_size
     num_blocks_horizontal = width // block_size
 
-    # 创建一个空数组来存储分块后的数据
+
     if isinstance(data, torch.Tensor):
         blocks = torch.empty((num_blocks_vertical * num_blocks_horizontal, block_size, block_size),
                              dtype=padded_data.dtype).to(data.device)
@@ -745,20 +702,20 @@ def block_data_ddpm(data, block_size):
     return blocks, padded_data.shape, pad_height, pad_width
 
 def reconstruct_data_ddpm(blocks, pad_shape, pad_height, pad_width):
-    # 获取原始数据的形状
+
     height, width = pad_shape
 
-    # 获取块的形状和数量
+
     num_blocks, block_height, block_width = blocks.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_height
     num_blocks_horizontal = width // block_width
 
-    # 创建一个空数组来存储重构后的数据
+
     reconstructed_data = torch.empty((height, width), dtype=blocks.dtype).to(blocks.device)
 
-    # 重构数据
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):

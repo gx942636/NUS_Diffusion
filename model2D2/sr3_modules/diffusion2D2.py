@@ -18,7 +18,6 @@ from pathlib import Path
 
 
 def load_yaml(file_path: str) -> dict:
-    # 检查所有可能的路径
     possible_paths = [
         file_path,
         os.path.join(os.getcwd(), file_path),
@@ -177,38 +176,24 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('posterior_mean_coef2', to_torch(
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))  # 后验均值的系数2
 
-    def predict_start_from_noise(self, x_t, t, noise):  # 预测起始值x_start
+    def predict_start_from_noise(self, x_t, t, noise):
         return self.sqrt_recip_alphas_cumprod[t] * x_t - \
             self.sqrt_recipm1_alphas_cumprod[t] * noise
 
-    def q_posterior(self, x_start, x_t, t):  # 计算后验分布q(x_{t-1} | x_t, x_0)的均值和方差
+    def q_posterior(self, x_start, x_t, t):
         posterior_mean = self.posterior_mean_coef1[t] * \
                          x_start + self.posterior_mean_coef2[t] * x_t
         posterior_log_variance_clipped = self.posterior_log_variance_clipped[t]
         return posterior_mean, posterior_log_variance_clipped
 
-    def p_mean_variance(self, x, t, clip_denoised: bool, condition_x=None, nus_fid=None):  # 计算生成分布p(x_t | x_{t-1}, x_0)的均值和方差
+    def p_mean_variance(self, x, t, clip_denoised: bool, condition_x=None, nus_fid=None):
         batch_size = x.shape[0]
         noise_level = torch.FloatTensor(
             [self.sqrt_alphas_cumprod_prev[t + 1]]).repeat(batch_size, 1).to(x.device)
 
         if condition_x is not None:
-
-            nus_fid = nus_fid.clone().requires_grad_(True)
-            x = x.clone().requires_grad_(True)
-            noise_level = noise_level.clone().requires_grad_(True)
-
-            if condition_x is not None:
-                condition_x = condition_x.clone().requires_grad_(True)
-            self.denoise_fn.train()
-            with torch.enable_grad():
-                noise, x_spec = self.denoise_fn(nus_fid, condition_x, x, noise_level)
-                x_recon = self.predict_start_from_noise(x, t=t, noise=noise)
-
-            # x_recon = self.predict_start_from_noise(x, t=t, noise=self.denoise_fn(condition_x, x, noise_level))
-
-            # noise, x_spec = self.denoise_fn(nus_fid, condition_x, x, noise_level)
-            # x_recon = self.predict_start_from_noise(x, t=t, noise=noise)
+            noise, x_spec = self.denoise_fn(nus_fid, condition_x, x, noise_level)
+            x_recon = self.predict_start_from_noise(x, t=t, noise=noise)
         else:
             x_recon = self.predict_start_from_noise(x, t=t, noise=self.denoise_fn(x, noise_level))
 
@@ -219,15 +204,15 @@ class GaussianDiffusion(nn.Module):
             x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_log_variance, x_recon, x_spec
 
-    # @torch.no_grad()
-    def p_sample(self, x, t, clip_denoised=True, condition_x=None, nus_fid=None):  # 从生成分布p(x_t | x_{t-1}, x_0)中采样
+    @torch.no_grad()
+    def p_sample(self, x, t, clip_denoised=True, condition_x=None, nus_fid=None):
         model_mean, model_log_variance, pred_xstart, x_spec = self.p_mean_variance(
             x=x, t=t, clip_denoised=clip_denoised, condition_x=condition_x, nus_fid=nus_fid)
         noise = torch.randn_like(x) if t > 0 else torch.zeros_like(x)
         return model_mean + noise * (0.5 * model_log_variance).exp(), x_spec, pred_xstart
 
     @torch.no_grad()
-    def p_sample_loop(self, x_in, nus_fid, continous=False):  # 用于在采样过程中循环进行多个时间步
+    def p_sample_loop(self, x_in, nus_fid, continous=False):
         device = self.betas.device
         sample_inter = (1 | (self.num_timesteps // 10))
         if not self.conditional:
@@ -263,163 +248,59 @@ class GaussianDiffusion(nn.Module):
                 if i < self.num_timesteps and i > 300:
                     continue
 
-                # ori_spec = scio.loadmat(f"{self.data_path['real_data_path']}.mat")['spec']
-                # phase_input, pad_shape, pad_height, pad_width = block_data_ddpm(ori_spec, 64)
-                # nus_fid = reconstruct_data_ddpm(x_nus.squeeze(1), pad_shape, pad_height, pad_width)
-                #
-                # img = img.requires_grad_(True)
-                # with torch.enable_grad():
-                #
-                #     # DPS
-                #     # pred_xstart:模型对输入(当前加噪数据)所预测的原始干净数据的估计值
-                #     out, x_spec, pred_xstart = self.p_sample(img, i, condition_x=x, nus_fid=nus_fid)
-                #
-                #     # Give condition.
-                #     # q_sample with t, in order to relate nus_fid to time,
-                #     # make sure that nus_fid on the same diffusion layer as current img
-                #     noise = torch.randn_like(x)
-                #     lower_bound = self.sqrt_alphas_cumprod_prev[i - 1]
-                #     upper_bound = self.sqrt_alphas_cumprod_prev[i]
-                #
-                #     continuous_sqrt_alpha_cumprod = (
-                #             torch.rand(img.shape[0], device=x.device) * (upper_bound - lower_bound) + lower_bound
-                #     ).view(img.shape[0], -1)
-                #
-                #     noisy_measurement = self.q_sample(
-                #         x_start=x_nus, continuous_sqrt_alpha_cumprod=continuous_sqrt_alpha_cumprod.view(-1, 1, 1, 1),
-                #         noise=noise)
-                #
-                #     task_config = load_yaml('../../yaml_configs/motion_deblur_config.yaml')
-                #     measure_config = task_config['measurement']
-                #     operator = get_operator(device=device, **measure_config['operator'])
-                #     noiser = get_noise(**measure_config['noise'])
-                #
-                #     cond_config = task_config['conditioning']
-                #     cond_method = get_conditioning_method(cond_config['method'], operator, noiser,
-                #                                           **cond_config['params'])
-                #     measurement_cond_fn = cond_method.conditioning
-                #     img, distance = measurement_cond_fn(x_t=out,  # 当前t步网络去噪的结果
-                #                                         measurement=torch.cat([x_nus.real, x_nus.imag], dim=1),# 已知信息 torch.cat([x_nus.real, x_nus.imag], dim=1)
-                #                                         noisy_measurement=noisy_measurement,
-                #                                         x_prev=img,
-                #                                         x_0_hat=pred_xstart,
-                #                                         pad_shape=pad_shape,
-                #                                         pad_height=pad_height,
-                #                                         pad_width=pad_width)
-                #
-                #
-                #     img = img.detach()
-                #     # 立即清理不需要的计算图
-                #     # print(f"Step {i}, distance: {distance.item()}")
-                #     del distance
-                #     torch.cuda.empty_cache()
+                # data consistency + L1
+                if self.data_consistency:
+                    if self.data_path['real_data_path'] is not None:
+                        ori_spec = scio.loadmat(f"{self.data_path['real_data_path']}.mat")['spec']
+                        phase_input, pad_shape, pad_height, pad_width = block_data_ddpm(ori_spec, 64)
+                        img = torch.complex(img[:, 0], img[:, 1])
+                        img = reconstruct_data_ddpm(img, pad_shape, pad_height, pad_width)
+                        img = torch.fft.ifft2(img, dim=(-2, -1))
+                        nus_fid = reconstruct_data_ddpm(x_nus.squeeze(1), pad_shape, pad_height, pad_width)
+                        img[torch.nonzero(nus_fid, as_tuple=True)] = (1 * img[torch.nonzero(nus_fid, as_tuple=True)]
+                                                                      + 1e3 * nus_fid[
+                                                                          torch.nonzero(nus_fid, as_tuple=True)]) / (
+                                                                             1 + 1e3)
 
-                # # data consistency + L1
-                # if self.data_consistency:
-                #     if self.data_path['real_data_path'] is not None:
-                #         ori_spec = scio.loadmat(f"{self.data_path['real_data_path']}.mat")['spec']
-                #         phase_input, pad_shape, pad_height, pad_width = block_data_ddpm(ori_spec, 64)
-                #         img = torch.complex(img[:, 0], img[:, 1])
-                #         img = reconstruct_data_ddpm(img, pad_shape, pad_height, pad_width)
-                #         img = torch.fft.ifft2(img, dim=(-2, -1))
-                #         nus_fid = reconstruct_data_ddpm(x_nus.squeeze(1), pad_shape, pad_height, pad_width)
-                #         img[torch.nonzero(nus_fid, as_tuple=True)] = (1 * img[torch.nonzero(nus_fid, as_tuple=True)]
-                #                                                       + 1e3 * nus_fid[
-                #                                                           torch.nonzero(nus_fid, as_tuple=True)]) / (
-                #                                                              1 + 1e3)
-                #
-                #         # 填零加窗处理
-                #         current_h, current_w = img.shape[-2], img.shape[-1]
-                #         target_h, target_w = 128, 128
-                #         fid_padded = F.pad(img, (0, target_w - current_w, 0, target_h - current_h), mode='constant',
-                #                            value=0)
-                #         img = apply_window(fid_padded, window_type='gaussian')
-                #         img = img[:current_h, :current_w]
-                #
-                #         # L1稀疏软阈值约束（在选定域中执行）
-                #         sparse_domain = 'freq'  # 'time' 或 'freq'
-                #         lam_l1 = 0.009  # L1稀疏约束强度，可调
-                #         if sparse_domain == 'freq':
-                #             # 在频域中稀疏（适合NMR谱图）
-                #             freq_c = torch.fft.fft2(img, dim=(-2, -1))
-                #             mag = torch.abs(freq_c)
-                #             phase = torch.angle(freq_c)
-                #             mag_thr = torch.clamp(mag - lam_l1, min=0.0)
-                #             freq_sparse = mag_thr * torch.exp(1j * phase)
-                #             fid_dc = torch.fft.ifft2(freq_sparse, dim=(-2, -1))
-                #         else:
-                #             # 在时域中稀疏（适合FID稀疏重建）
-                #             mag = torch.abs(fid_dc)
-                #             phase = torch.angle(fid_dc)
-                #             mag_thr = torch.clamp(mag - lam_l1, min=0.0)
-                #             fid_dc = mag_thr * torch.exp(1j * phase)
-                #
-                #         img = torch.fft.fft2(fid_dc, dim=(-2, -1))
-                #         img, _, _, _ = block_data_ddpm(img, 64)
-                #         img = img.unsqueeze(1)
-                #     else:
-                #         img = torch.complex(img[:, 0], img[:, 1]).unsqueeze(1)
-                #         img = torch.fft.ifft2(img, dim=(-2, -1))
-                #         img[torch.nonzero(nus_fid, as_tuple=True)] = (img[torch.nonzero(nus_fid, as_tuple=True)]
-                #                                                       + 1e3 * nus_fid[
-                #                                                           torch.nonzero(nus_fid, as_tuple=True)]) / (
-                #                                                              1 + 1e3)
-                #         img = torch.fft.fft2(img, dim=(-2,-1))
-                #     img = torch.concat((img.real, img.imag), dim=1)
-                #     img, x_spec, _ = self.p_sample(img, i, condition_x=x, nus_fid=nus_fid)
+                        # 填零加窗处理
+                        current_h, current_w = img.shape[-2], img.shape[-1]
+                        target_h, target_w = 128, 128
+                        fid_padded = F.pad(img, (0, target_w - current_w, 0, target_h - current_h), mode='constant',
+                                           value=0)
+                        img = apply_window(fid_padded, window_type='gaussian')
+                        img = img[:current_h, :current_w]
 
-                ori_spec = scio.loadmat(f"{self.data_path['real_data_path']}.mat")['spec']
-                phase_input, pad_shape, pad_height, pad_width = block_data_ddpm(ori_spec, 64)
-                nus_fid = reconstruct_data_ddpm(x_nus.squeeze(1), pad_shape, pad_height, pad_width)
+                        # L1稀疏软阈值约束（在选定域中执行）
+                        sparse_domain = 'freq'  # 'time' 或 'freq'
+                        lam_l1 = 0.009  # L1稀疏约束强度，可调
+                        if sparse_domain == 'freq':
+                            # 在频域中稀疏（适合NMR谱图）
+                            freq_c = torch.fft.fft2(img, dim=(-2, -1))
+                            mag = torch.abs(freq_c)
+                            phase = torch.angle(freq_c)
+                            mag_thr = torch.clamp(mag - lam_l1, min=0.0)
+                            freq_sparse = mag_thr * torch.exp(1j * phase)
+                            fid_dc = torch.fft.ifft2(freq_sparse, dim=(-2, -1))
+                        else:
+                            # 在时域中稀疏（适合FID稀疏重建）
+                            mag = torch.abs(fid_dc)
+                            phase = torch.angle(fid_dc)
+                            mag_thr = torch.clamp(mag - lam_l1, min=0.0)
+                            fid_dc = mag_thr * torch.exp(1j * phase)
 
-                img = img.requires_grad_(True)
-                with torch.enable_grad():
-
-                    # DPS
-                    # pred_xstart:模型对输入(当前加噪数据)所预测的原始干净数据的估计值
-                    out, x_spec, pred_xstart = self.p_sample(img, i, condition_x=x, nus_fid=nus_fid)
-
-                    # Give condition.
-                    # q_sample with t, in order to relate nus_fid to time,
-                    # make sure that nus_fid on the same diffusion layer as current img
-                    noise = torch.randn_like(x)
-                    lower_bound = self.sqrt_alphas_cumprod_prev[i - 1]
-                    upper_bound = self.sqrt_alphas_cumprod_prev[i]
-
-                    continuous_sqrt_alpha_cumprod = (
-                            torch.rand(img.shape[0], device=x.device) * (upper_bound - lower_bound) + lower_bound
-                    ).view(img.shape[0], -1)
-
-                    noisy_measurement = self.q_sample(
-                        x_start=x_nus,
-                        continuous_sqrt_alpha_cumprod=continuous_sqrt_alpha_cumprod.view(-1, 1, 1, 1),
-                        noise=noise)
-
-                    task_config = load_yaml('../../yaml_configs/motion_deblur_config.yaml')
-                    measure_config = task_config['measurement']
-                    operator = get_operator(device=device, **measure_config['operator'])
-                    noiser = get_noise(**measure_config['noise'])
-
-                    cond_config = task_config['conditioning']
-                    cond_method = get_conditioning_method(cond_config['method'], operator, noiser,
-                                                          **cond_config['params'])
-                    measurement_cond_fn = cond_method.conditioning
-
-                    img, distance = measurement_cond_fn(x_t=out,  # 当前t步网络去噪的结果
-                                                        measurement=torch.cat([x_nus.real, x_nus.imag], dim=1),  # 已知信息 torch.cat([x_nus.real, x_nus.imag], dim=1)
-                                                        noisy_measurement=noisy_measurement,
-                                                        x_prev=img,
-                                                        x_0_hat=pred_xstart,
-                                                        pad_shape=pad_shape,
-                                                        pad_height=pad_height,
-                                                        pad_width=pad_width)
-
-                    img = img.detach()
-                    # 立即清理不需要的计算图
-                    # print(f"Step {i}, distance: {distance.item()}")
-                    del distance
-                    torch.cuda.empty_cache()
-
+                        img = torch.fft.fft2(fid_dc, dim=(-2, -1))
+                        img, _, _, _ = block_data_ddpm(img, 64)
+                        img = img.unsqueeze(1)
+                    else:
+                        img = torch.complex(img[:, 0], img[:, 1]).unsqueeze(1)
+                        img = torch.fft.ifft2(img, dim=(-2, -1))
+                        img[torch.nonzero(nus_fid, as_tuple=True)] = (img[torch.nonzero(nus_fid, as_tuple=True)]
+                                                                      + 1e3 * nus_fid[
+                                                                          torch.nonzero(nus_fid, as_tuple=True)]) / (
+                                                                             1 + 1e3)
+                        img = torch.fft.fft2(img, dim=(-2,-1))
+                    img = torch.concat((img.real, img.imag), dim=1)
+                    img, x_spec, _ = self.p_sample(img, i, condition_x=x, nus_fid=nus_fid)
 
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
@@ -471,17 +352,6 @@ class GaussianDiffusion(nn.Module):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(
             x_start=x_start, continuous_sqrt_alpha_cumprod=continuous_sqrt_alpha_cumprod.view(-1, 1, 1, 1), noise=noise)
-        # # DC
-        # x_noisy_dc = torch.complex(x_noisy[:, 0], x_noisy[:, 1]).unsqueeze(1)
-        # x_noisy_dc = torch.fft.ifft(x_noisy_dc, dim=-2)
-        # sr_dc = torch.complex(x_in['SR'][:, 0], x_in['SR'][:, 1]).unsqueeze(1)
-        # sr_dc = torch.fft.ifft(sr_dc, dim=-2)
-        # x_noisy_dc[torch.nonzero(sr_dc, as_tuple=True)] = ((x_noisy_dc[torch.nonzero(sr_dc, as_tuple=True)] +
-        #                                                         1e3 * sr_dc[torch.nonzero(sr_dc, as_tuple=True)]) /
-        #                                                     (1 + 1e3))
-        #
-        # x_noisy_dc = torch.fft.fft(x_noisy_dc, dim=-2)
-        # x_noisy_dc = torch.concat((x_noisy_dc.real, x_noisy_dc.imag), dim=1)
 
         if not self.conditional:
             x_recon = self.denoise_fn(x_noisy, continuous_sqrt_alpha_cumprod)
@@ -504,16 +374,6 @@ class GaussianDiffusion(nn.Module):
         loss2 = (loss_real2 + loss_imag2).sum()
         loss3 = (loss_real + loss_imag).sum()
         loss = 1.5 * loss1 + 6 * loss3 + 0.5 * loss4 + 2 * loss2
-
-        # def CDMANE(output, label, a):  # 第二次修改loss， l组loss
-        #     cdmane = torch.sum(torch.abs((label - output) / (torch.abs(label) + a)))
-        #     return cdmane
-        # noise_decrease_one_dim = torch.stack((noise[:, 0] * x_in['WR'].squeeze(1),
-        #                                       noise[:, 1] * x_in['WR'].squeeze(1)), dim=1)
-        # x_recon_decrease_one_dim = torch.stack((x_recon[:, 0] * x_in['WR'].squeeze(1),
-        #                                         x_recon[:, 1] * x_in['WR'].squeeze(1)), dim=1)
-        #
-        # loss = 0.025*CDMANE(x_recon_decrease_one_dim, noise_decrease_one_dim, 0.5) + CDMANE(x_recon, noise, 0.5)
 
         return loss
 
@@ -655,14 +515,14 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     return res.expand(broadcast_shape)
 
 def pad_data_ddpm(data, block_size):
-    # 获取数据的形状
+
     height, width = data.shape
 
-    # 计算需要填充的行和列数
+
     pad_height = (block_size - height % block_size) % block_size
     pad_width = (block_size - width % block_size) % block_size
 
-    # 在数据的底部和右侧填充0
+
     if isinstance(data, torch.Tensor):
         padded_data = F.pad(data, (0, pad_width, 0, pad_height), mode='constant', value=0)
     elif isinstance(data, np.ndarray):
@@ -671,17 +531,17 @@ def pad_data_ddpm(data, block_size):
     return padded_data, pad_height, pad_width
 
 def block_data_ddpm(data, block_size):
-    # 对数据进行填充
+
     padded_data, pad_height, pad_width = pad_data_ddpm(data, block_size)
 
-    # 获取填充后的数据的形状
+
     height, width = padded_data.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_size
     num_blocks_horizontal = width // block_size
 
-    # 创建一个空数组来存储分块后的数据
+
     if isinstance(data, torch.Tensor):
         blocks = torch.empty((num_blocks_vertical * num_blocks_horizontal, block_size, block_size),
                              dtype=padded_data.dtype).to(data.device)
@@ -689,7 +549,7 @@ def block_data_ddpm(data, block_size):
         blocks = np.empty((num_blocks_vertical * num_blocks_horizontal, block_size, block_size),
                              dtype=padded_data.dtype)
 
-    # 分块
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):
@@ -700,20 +560,20 @@ def block_data_ddpm(data, block_size):
     return blocks, padded_data.shape, pad_height, pad_width
 
 def reconstruct_data_ddpm(blocks, pad_shape, pad_height, pad_width):
-    # 获取原始数据的形状
+
     height, width = pad_shape
 
-    # 获取块的形状和数量
+
     num_blocks, block_height, block_width = blocks.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_height
     num_blocks_horizontal = width // block_width
 
-    # 创建一个空数组来存储重构后的数据
+
     reconstructed_data = torch.empty((height, width), dtype=blocks.dtype).to(blocks.device)
 
-    # 重构数据
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):

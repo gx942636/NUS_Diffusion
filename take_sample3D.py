@@ -36,39 +36,38 @@ xulie = 344
 base_path = "./data/A3DK08_r_slices/label_spec"
 dynamic_real_data_path = f"{base_path}{xulie}"
 
-# 更新 opt 中的 test -> real_data_path
 opt['datasets']['test']['real_data_path'] = dynamic_real_data_path
 print(xulie)
 
 def pad_data(data, block_size):
-    # 获取数据的形状
+
     height, width = data.shape
 
-    # 计算需要填充的行和列数
+
     pad_height = (block_size - height % block_size) % block_size
     pad_width = (block_size - width % block_size) % block_size
 
-    # 在数据的底部和右侧填充0
+
     padded_data = np.pad(data, ((0, pad_height), (0, pad_width)), mode='constant', constant_values=0)
 
     return padded_data, pad_height, pad_width
 
 
 def block_data(data, block_size):
-    # 对数据进行填充
+
     padded_data, pad_height, pad_width = pad_data(data, block_size)
 
-    # 获取填充后的数据的形状
+
     height, width = padded_data.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_size
     num_blocks_horizontal = width // block_size
 
-    # 创建一个空数组来存储分块后的数据
+
     blocks = np.empty((num_blocks_vertical * num_blocks_horizontal, block_size, block_size), dtype=padded_data.dtype)
 
-    # 分块
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):
@@ -80,20 +79,20 @@ def block_data(data, block_size):
 
 
 def reconstruct_data(blocks, pad_shape, pad_height, pad_width):
-    # 获取填充后数据的形状
+
     height, width = pad_shape
 
-    # 获取块的形状和数量
+
     num_blocks, block_height, block_width = blocks.shape
 
-    # 计算水平和垂直方向上的块数
+
     num_blocks_vertical = height // block_height
     num_blocks_horizontal = width // block_width
 
-    # 创建一个空数组来存储重构后的数据
+
     reconstructed_data = np.empty((height, width), dtype=blocks.dtype)
 
-    # 重构数据
+
     idx = 0
     for i in range(num_blocks_vertical):
         for j in range(num_blocks_horizontal):
@@ -101,7 +100,7 @@ def reconstruct_data(blocks, pad_shape, pad_height, pad_width):
             reconstructed_data[i * block_height:(i + 1) * block_height, j * block_width:(j + 1) * block_width] = block
             idx += 1
 
-    # 删除填充的部分
+
     final_data = reconstructed_data[:height if pad_height == 0 else -pad_height,
                  :width if pad_width == 0 else -pad_width]
 
@@ -113,16 +112,9 @@ ori_spec = scio.loadmat(data_path)['spec']
 N1 = ori_spec.shape[0]
 N2 = ori_spec.shape[1]
 
-# threshold = 0.01
-# mask = np.abs(ori_spec) < np.max(np.abs(ori_spec), axis=1, keepdims=True)[0] * threshold
-# ori_spec[mask] = 0
-
 phase_input, pad_shape, pad_height, pad_width = block_data(ori_spec, 64)
 xx = np.fft.ifft2(ori_spec)
 
-# random_integer = random.randint(10000, 20000)  # 生成1000到2000之间的随机整数
-# result = 15000 / 100000  # 除以100000
-# result_formatted = '{:.5f}'.format(result)  # 格式化为五位小数
 result_formatted = random.randint(1, 1000)  # 生成1到10000之间的随机整数
 print(result_formatted)
 Mask = scio.loadmat(f"./data2D/0.08_2D_mask-{N1}-{N2}/Mask_{result_formatted}.mat")['Mask']
