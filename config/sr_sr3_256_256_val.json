@@ -9,8 +9,8 @@
         "tb_logger": "tb_logger",
         "results": "results",
         "checkpoint": "checkpoint",
-        "resume_state": "experiments/sr_NUSNMR_250930_081820/checkpoint/I720000_E72" // One-dimensional undersampling
-        //"resume_state": "experiments/sr_NUSNMR_251212_073902/checkpoint/I710000_E71" // Two-dimensional undersampling
+        "resume_state": "sr_NUSNMR_250930_081820/checkpoint/I720000_E72" // One-dimensional undersampling
+        //"resume_state": "sr_NUSNMR_251212_073902/checkpoint/I710000_E71" // Two-dimensional undersampling
     },
     "datasets": {
         "train": {
